@@ -1,34 +1,38 @@
 
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
+
+const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maxSize = 10 * 1024 * 1024;
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = (await request.json()) as HandleUploadBody;
+    const formData = await request.formData();
+    const file = formData.get("file");
 
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async (pathname) => ({
-        allowedContentTypes: [
-          "image/jpeg",
-          "image/png",
-          "image/webp",
-        ],
-        maximumSizeInBytes: 10 * 1024 * 1024,
-        tokenPayload: JSON.stringify({ pathname }),
-      }),
-      onUploadCompleted: async () => {
-        // Upload completion can be handled here if needed.
-      },
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "No image file provided." }, { status: 400 });
+    }
+
+    if (!allowedTypes.has(file.type)) {
+      return NextResponse.json({ error: "Only JPG, PNG and WebP images are supported." }, { status: 400 });
+    }
+
+    if (file.size > maxSize) {
+      return NextResponse.json({ error: "The image must be 10 MB or smaller." }, { status: 400 });
+    }
+
+    const blob = await put(file.name, file, {
+      access: "public",
+      addRandomSuffix: true,
     });
 
-    return NextResponse.json(jsonResponse);
+    return NextResponse.json({ url: blob.url });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(
-      { error: "Image upload failed." },
-      { status: 400 }
+      { error: "Image upload failed. Check that the Blob store is connected to this deployment." },
+      { status: 500 }
     );
   }
 }
